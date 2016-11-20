@@ -14,6 +14,7 @@ Use commands:
 * `db` <database> - lists user grants to this database
 * `create-user` - creates a user
 * `create-db <database>` - creates a database
+* `grant` - grants db access to a user
 
 Or start it with a command:
 

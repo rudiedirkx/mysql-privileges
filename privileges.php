@@ -32,6 +32,39 @@ class App {
 	 */
 
 	/**
+	 * grant
+	 */
+	public function cmd_grant() {
+		$db = $this->read('Which database?');
+		if (empty($db)) {
+			throw new CommandException('Database is required');
+		}
+
+		$host = $this->read('Access from which host? [localhost]') ?: 'localhost';
+		if (empty($host)) {
+			throw new CommandException('Host is required');
+		}
+
+		$name = $this->read('User name?');
+		if (empty($name)) {
+			throw new CommandException('User name is required');
+		}
+
+		$users = $this->getUsers();
+		if (!isset($users[$name], $users[$name][$host])) {
+			throw new CommandException("User doesn't exist");
+		}
+
+		$privileges = $this->read('Which privileges? [ALL]') ?: 'ALL';
+
+		$user = $this->getIdentity($name, $host);
+
+		$this->execute("GRANT $privileges ON `$db`.* TO $user");
+		$this->success('Access granted!');
+		$this->cmd_user($user);
+	}
+
+	/**
 	 * create-db <database>
 	 */
 	public function cmd_create_db($database) {
