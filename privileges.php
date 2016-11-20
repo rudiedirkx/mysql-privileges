@@ -32,6 +32,14 @@ class App {
 	 */
 
 	/**
+	 * create-db <database>
+	 */
+	public function cmd_create_db($database) {
+		$this->execute("CREATE DATABASE `$database`");
+		$this->success('Database created!');
+	}
+
+	/**
 	 * create-user
 	 */
 	public function cmd_create_user() {

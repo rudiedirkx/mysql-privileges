@@ -13,6 +13,7 @@ Use commands:
 * `raw-user` <name> - lists raw grants for a user
 * `db` <database> - lists user grants to this database
 * `create-user` - creates a user
+* `create-db <database>` - creates a database
 
 Or start it with a command:
 
