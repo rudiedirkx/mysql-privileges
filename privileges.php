@@ -52,6 +52,8 @@ class App {
 		$table = [];
 		foreach ($grants as $grant) {
 			list($what, $where, $admin) = $this->parseGrant(current($grant));
+			if ($what == 'PROXY') continue;
+
 			if (strpos($where, '.') !== false) {
 				list($db, $tbl) = explode('.', $where, 2);
 			}
