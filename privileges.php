@@ -32,6 +32,33 @@ class App {
 	 */
 
 	/**
+	 * create-user
+	 */
+	public function cmd_create_user() {
+		$host = $this->read('Access from which host? [localhost]') ?: 'localhost';
+		$name = $this->read('User name?');
+
+		if (empty($name)) {
+			throw new CommandException('User name is required');
+		}
+
+		$users = $this->getUsers();
+		if (isset($users[$name], $users[$name][$host])) {
+			throw new CommandException('User already exists');
+		}
+
+		$user = $this->getIdentity($name, $host);
+		$pass = $this->read('Password?');
+
+		if (empty($pass)) {
+			throw new CommandException('Password is required');
+		}
+
+		$result = $this->query("CREATE USER $user IDENTIFIED BY '$pass'");
+		var_dump($result);
+	}
+
+	/**
 	 * database <database>
 	 */
 	public function cmd_db($db) {
@@ -71,7 +98,7 @@ class App {
 			$table[] = [current($grant)];
 		}
 
-		$this->table($table);
+		$this->table($table, ['GRANT']);
 	}
 
 	/**
@@ -102,9 +129,7 @@ class App {
 
 		$table = [];
 		foreach ($identities as $user) {
-			$grants = $this->queryAll("
-				SHOW GRANTS FOR $user
-			");
+			$grants = $this->getParsedUserGrants($user);
 
 			list($name, $host) = explode('@', str_replace("'", '', $user));
 
@@ -184,6 +209,10 @@ class App {
 	protected function parseGrant($grant) {
 		if (preg_match("#^GRANT (.+?) ON `?(.+?)`?\.`?(.+?)`? TO '(.+?)'@'(.+?)'( WITH GRANT OPTION)?$#", $grant, $match)) {
 			$what = trim($match[1]);
+			if ($what == 'USAGE') {
+				return;
+			}
+
 			$where_db = trim($match[2]);
 			$where_tbl = trim($match[3]);
 			$who_name = trim($match[4]);
