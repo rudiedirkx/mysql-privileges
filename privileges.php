@@ -54,8 +54,9 @@ class App {
 			throw new CommandException('Password is required');
 		}
 
-		$result = $this->query("CREATE USER $user IDENTIFIED BY '$pass'");
-		var_dump($result);
+		$this->execute("CREATE USER $user IDENTIFIED BY '$pass'");
+
+		$this->success('User created!');
 	}
 
 	/**
@@ -262,6 +263,12 @@ class App {
 		return reset($all);
 	}
 
+	protected function execute($query) {
+		if ($this->db->query($query) !== true) {
+			throw new CommandException("[{$this->db->errno}] {$this->db->error}");
+		}
+	}
+
 	protected function sortTable(array &$table) {
 		usort($table, function($a, $b) {
 			// Same col 1, compare col 2
@@ -340,6 +347,10 @@ class App {
 
 	protected function error($message) {
 		echo $this->red($message) . "\n";
+	}
+
+	protected function success($message) {
+		echo $this->green($message) . "\n";
 	}
 
 	public function command($words) {
