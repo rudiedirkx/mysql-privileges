@@ -32,6 +32,31 @@ class App {
 	 */
 
 	/**
+	 * database <database>
+	 */
+	public function cmd_db($db) {
+		$users = $this->getUsers();
+
+		$table = [];
+		foreach ($users as $name => $hosts) {
+			foreach ($hosts as $host) {
+				$user = $this->getIdentity($name, $host);
+
+				$grants = $this->getParsedUserGrants($user);
+				foreach ($grants as $grant) {
+					list($what, $where_db, , , , $admin) = $grant;
+					if ($where_db == $db || $where_db == '*') {
+						$table[] = [$host, $name, $what];
+					}
+				}
+			}
+		}
+
+		$this->sortTable($table);
+		$this->table($table, ['HOST', 'USER', 'PRIVILEGES']);
+	}
+
+	/**
 	 * raw-user <user>
 	 */
 	public function cmd_raw_user($user) {
@@ -55,7 +80,7 @@ class App {
 	public function cmd_user($user) {
 		list($name, $host) = $this->getUser($user);
 
-		$grants = $this->parsedUserGrants("'$name'@'$host'");
+		$grants = $this->getParsedUserGrants("'$name'@'$host'");
 
 		$table = [];
 		foreach ($grants as $grant) {
@@ -103,9 +128,12 @@ class App {
 		echo "Available commands:\n";
 		echo "- help\n";
 		echo "- users\n";
-		echo "- user <user>\n";
-		// echo "- database <database>\n";
-		echo "- raw-user <user>\n";
+		echo "- user " . $this->green('<user>') . "\n";
+		echo "- db " . $this->green('<database>') . "\n";
+		echo "- create-user\n";
+		echo "- create-db\n";
+		echo "- grant\n";
+		echo "- raw-user " . $this->green('<user>') . "\n";
 	}
 
 	/**
@@ -140,7 +168,7 @@ class App {
 		return [$name, $host];
 	}
 
-	protected function parsedUserGrants($user) {
+	protected function getParsedUserGrants($user) {
 		$raw = $this->queryAll("SHOW GRANTS FOR $user");
 
 		$grants = [];
@@ -181,11 +209,15 @@ class App {
 		return $users;
 	}
 
+	protected function getIdentity($name, $host) {
+		return "'$name'@'$host'";
+	}
+
 	protected function getIdentities($users) {
 		$identities = [];
 		foreach ($users as $user => $hosts) {
 			foreach ($hosts as $host) {
-				$identities[] = "'$user'@'$host'";
+				$identities[] = $this->getIdentity($user, $host);
 			}
 		}
 
@@ -269,8 +301,16 @@ class App {
 		}
 	}
 
+	protected function red($message) {
+		return "\033[0;31m$message\033[0m";
+	}
+
+	protected function green($message) {
+		return "\033[0;32m$message\033[0m";
+	}
+
 	protected function error($message) {
-		echo "$message\n";
+		echo $this->red($message) . "\n";
 	}
 
 	public function command($words) {
@@ -293,7 +333,7 @@ class App {
 			}
 		}
 		catch (ReflectionException $ex) {
-			return $this->error('Unknown command');
+			return $cmd ? $this->error('Unknown command') : null;
 		}
 
 		// Command exceptions
