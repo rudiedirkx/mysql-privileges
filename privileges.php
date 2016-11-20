@@ -62,19 +62,8 @@ class App {
 			$table[] = [$db, $tbl, $what, $admin ? 'Y' : ''];
 		}
 
-		usort($table, function($a, $b) {
-			// Same database, compare table
-			if ($a[0] == $b[0]) {
-				return strnatcasecmp($a[1], $b[1]);
-			}
-
-			// Compare database
-			return strnatcasecmp($a[0], $b[0]);
-		});
-
-		array_unshift($table, ['DATABASE', 'TABLE', 'PRIVILEGES', 'GRANT?']);
-
-		$this->table($table);
+		$this->sortTable($table);
+		$this->table($table, ['DATABASE', 'TABLE', 'PRIVILEGES', 'GRANT?']);
 
 		return $this->index();
 	}
@@ -100,19 +89,8 @@ class App {
 			$table[] = $row;
 		}
 
-		usort($table, function($a, $b) {
-			// Same host, compare name
-			if ($a[0] == $b[0]) {
-				return strnatcasecmp($a[1], $b[1]);
-			}
-
-			// Compare host
-			return strnatcasecmp($a[0], $b[0]);
-		});
-
-		array_unshift($table, ['HOST', 'NAME', 'PRIVILEGES']);
-
-		$this->table($table);
+		$this->sortTable($table);
+		$this->table($table, ['HOST', 'NAME', 'PRIVILEGES']);
 
 		return $this->index();
 	}
@@ -211,7 +189,23 @@ class App {
 		return -1;
 	}
 
-	function table($table) {
+	function sortTable(array &$table) {
+		usort($table, function($a, $b) {
+			// Same col 1, compare col 2
+			if ($a[0] == $b[0]) {
+				return strnatcasecmp($a[1], $b[1]);
+			}
+
+			// Compare col 1
+			return strnatcasecmp($a[0], $b[0]);
+		});
+	}
+
+	function table(array $table, array $header = []) {
+		if ($header) {
+			array_unshift($table, $header);
+		}
+
 		$sizes = [];
 		foreach ($table as $y => $row) {
 			foreach ($row as $x => $col) {
