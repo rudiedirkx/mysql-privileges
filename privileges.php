@@ -182,11 +182,25 @@ class App {
 		$cmd = str_replace('-', '_', array_shift($words));
 		$args = $words;
 
-		if (is_callable($method = [$this, "cmd_$cmd"])) {
-			return call_user_func_array($method, $args);
-		}
+		try {
+			$_method = new ReflectionMethod($this, "cmd_$cmd");
+			$_args = $_method->getParameters();
+			$_required = 0;
+			foreach ($_args as $i => $_arg) {
+				if (!$_arg->isOptional()) {
+					$_required = $i + 1;
+				}
+			}
 
-		return -1;
+			if ($_required > count($args)) {
+				return -1;
+			}
+
+			return $_method->invokeArgs($this, $args);
+		}
+		catch (ReflectionException $ex) {
+			return -1;
+		}
 	}
 
 	function sortTable(array &$table) {
