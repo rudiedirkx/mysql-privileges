@@ -13,19 +13,28 @@ catch (Exception $ex) {
 }
 
 $app = new App($host, $user, $pass);
-$cmd ? $app->command($cmd) : $app->cmd_help();
+if ($cmd) {
+	$app->command($cmd);
+}
+else {
+	$app->cmd_help();
+	$app->listen();
+}
 
 // === //
 
-class App {
-	function __construct($host, $user, $pass) {
-		$this->db = @new mysqli($host, $user, $pass);
-		if ($this->db->connect_errno) {
-			exit("Connection error: [{$this->db->connect_errno}] {$this->db->connect_error}\n");
-		}
-	}
+class CommandException extends Exception {}
 
-	function cmd_raw_user($user) {
+class App {
+
+	/**
+	 * COMMANDS
+	 */
+
+	/**
+	 * raw-user <user>
+	 */
+	public function cmd_raw_user($user) {
 		list($name, $host) = $this->getUser($user);
 
 		$grants = $this->queryAll("
@@ -38,39 +47,31 @@ class App {
 		}
 
 		$this->table($table);
-
-		return $this->index();
 	}
 
-	function cmd_user($user) {
+	/**
+	 * user <user>
+	 */
+	public function cmd_user($user) {
 		list($name, $host) = $this->getUser($user);
 
-		$grants = $this->queryAll("
-			SHOW GRANTS FOR '$name'@'$host'
-		");
+		$grants = $this->parsedUserGrants("'$name'@'$host'");
 
 		$table = [];
 		foreach ($grants as $grant) {
-			list($what, $where, $admin) = $this->parseGrant(current($grant));
-			if ($what == 'PROXY') continue;
+			list($what, $where_db, $where_tbl, , , $admin) = $grant;
 
-			if (strpos($where, '.') !== false) {
-				list($db, $tbl) = explode('.', $where, 2);
-			}
-			else {
-				$db = $where;
-				$tbl = '*';
-			}
-			$table[] = [$db, $tbl, $what, $admin ? 'Y' : ''];
+			$table[] = [$where_db, $where_tbl, $what, $admin ? 'Y' : ''];
 		}
 
 		$this->sortTable($table);
 		$this->table($table, ['DATABASE', 'TABLE', 'PRIVILEGES', 'GRANT?']);
-
-		return $this->index();
 	}
 
-	function cmd_users() {
+	/**
+	 * users
+	 */
+	public function cmd_users() {
 		$users = $this->getUsers();
 		$identities = $this->getIdentities($users);
 
@@ -93,33 +94,43 @@ class App {
 
 		$this->sortTable($table);
 		$this->table($table, ['HOST', 'NAME', 'PRIVILEGES']);
-
-		return $this->index();
 	}
 
-	function cmd_help() {
+	/**
+	 * help
+	 */
+	public function cmd_help() {
 		echo "Available commands:\n";
 		echo "- help\n";
 		echo "- users\n";
 		echo "- user <user>\n";
 		// echo "- database <database>\n";
 		echo "- raw-user <user>\n";
-
-		return $this->index();
 	}
 
-	function getUser($user) {
+	/**
+	 * SUPPORT
+	 */
+
+	public function __construct($host, $user, $pass) {
+		$this->db = @new mysqli($host, $user, $pass);
+		if ($this->db->connect_errno) {
+			exit("Connection error: [{$this->db->connect_errno}] {$this->db->connect_error}\n");
+		}
+	}
+
+	protected function getUser($user) {
 		$users = $this->getUsers();
 
 		if (strpos($user, '@') !== false) {
 			list($name, $host) = explode('@', str_replace("'", '', $user));
 			if (!isset($users[$name][$host])) {
-				throw new Exception('Invalid user');
+				throw new CommandException('Invalid user');
 			}
 		}
 		else {
 			if (!isset($users[$user]) || count($users[$user]) != 1) {
-				throw new Exception('Invalid user');
+				throw new CommandException('Invalid user');
 			}
 
 			$name = $user;
@@ -129,16 +140,32 @@ class App {
 		return [$name, $host];
 	}
 
-	function parseGrant($grant) {
-		if (preg_match('#^GRANT (.+?) ON (.+?) TO (.+?)( WITH GRANT OPTION)?$#', $grant, $match)) {
+	protected function parsedUserGrants($user) {
+		$raw = $this->queryAll("SHOW GRANTS FOR $user");
+
+		$grants = [];
+		foreach ($raw as $grant) {
+			if ($grant = $this->parseGrant(current($grant))) {
+				$grants[] = $grant;
+			}
+		}
+
+		return $grants;
+	}
+
+	protected function parseGrant($grant) {
+		if (preg_match("#^GRANT (.+?) ON `?(.+?)`?\.`?(.+?)`? TO '(.+?)'@'(.+?)'( WITH GRANT OPTION)?$#", $grant, $match)) {
 			$what = trim($match[1]);
-			$where = str_replace('`', '', preg_replace('#\.\*$#', '', trim($match[2])));
-			$admin = (bool) trim(@$match[4]);
-			return [$what, $where, $admin];
+			$where_db = trim($match[2]);
+			$where_tbl = trim($match[3]);
+			$who_name = trim($match[4]);
+			$who_host = trim($match[5]);
+			$admin = (bool) trim(@$match[6]);
+			return [$what, $where_db, $where_tbl, $who_name, $who_host, $admin];
 		}
 	}
 
-	function getUsers() {
+	protected function getUsers() {
 		$raw = $this->queryAll('
 			SELECT GRANTEE
 			FROM information_schema.USER_PRIVILEGES
@@ -154,7 +181,7 @@ class App {
 		return $users;
 	}
 
-	function getIdentities($users) {
+	protected function getIdentities($users) {
 		$identities = [];
 		foreach ($users as $user => $hosts) {
 			foreach ($hosts as $host) {
@@ -165,47 +192,16 @@ class App {
 		return $identities;
 	}
 
-	function index() {
-		$cmd = App::read('What do you want to do?');
-
-		$result = $this->command(self::cliToArray($cmd));
-		if ($result !== -1) {
-			return $result;
-		}
-
-		if ($cmd) {
-			echo "\nUNKNOWN COMMAND\n";
-		}
-
-		return $this->index();
+	protected function queryAll($query) {
+		return iterator_to_array($this->db->query($query));
 	}
 
-	function command($words) {
-		$cmd = str_replace('-', '_', array_shift($words));
-		$args = $words;
-
-		try {
-			$_method = new ReflectionMethod($this, "cmd_$cmd");
-			$_args = $_method->getParameters();
-			$_required = 0;
-			foreach ($_args as $i => $_arg) {
-				if (!$_arg->isOptional()) {
-					$_required = $i + 1;
-				}
-			}
-
-			if ($_required > count($args)) {
-				return -1;
-			}
-
-			return $_method->invokeArgs($this, $args);
-		}
-		catch (ReflectionException $ex) {
-			return -1;
-		}
+	protected function query($query) {
+		$all = $this->queryAll($query);
+		return reset($all);
 	}
 
-	function sortTable(array &$table) {
+	protected function sortTable(array &$table) {
 		usort($table, function($a, $b) {
 			// Same col 1, compare col 2
 			if ($a[0] == $b[0]) {
@@ -217,7 +213,7 @@ class App {
 		});
 	}
 
-	function table(array $table, array $header = []) {
+	protected function table(array $table, array $header = []) {
 		if ($header) {
 			array_unshift($table, $header);
 		}
@@ -257,27 +253,70 @@ class App {
 		}
 	}
 
-	function read($question) {
+	/**
+	 * PROCESS
+	 */
+
+	protected function index() {
+		$cmd = App::read('What do you want to do?');
+
+		$this->command(self::cliToArray($cmd));
+	}
+
+	public function listen() {
+		while (true) {
+			$this->index();
+		}
+	}
+
+	protected function error($message) {
+		echo "$message\n";
+	}
+
+	public function command($words) {
+		$cmd = str_replace('-', '_', array_shift($words));
+		$args = $words;
+
+		// App exceptions
+		try {
+			$_method = new ReflectionMethod($this, "cmd_$cmd");
+			$_args = $_method->getParameters();
+			$_required = 0;
+			foreach ($_args as $i => $_arg) {
+				if (!$_arg->isOptional()) {
+					$_required = $i + 1;
+				}
+			}
+
+			if ($_required > count($args)) {
+				return $this->error('Too few arguments');
+			}
+		}
+		catch (ReflectionException $ex) {
+			return $this->error('Unknown command');
+		}
+
+		// Command exceptions
+		try {
+			return $_method->invokeArgs($this, $args);
+		}
+		catch (CommandException $ex) {
+			return $this->error($ex->getMessage());
+		}
+	}
+
+	protected function read($question) {
 		echo "\n$question\n> ";
 		$handle = fopen('php://stdin', 'r');
 		$line = trim(fgets($handle));
 		return $line;
 	}
 
-	function queryAll($query) {
-		return iterator_to_array($this->db->query($query));
-	}
-
-	function query($query) {
-		$all = $this->queryAll($query);
-		return reset($all);
-	}
-
-	static function cliToArray($cli) {
+	static public function cliToArray($cli) {
 		return preg_split('#\s+#', trim($cli));
 	}
 
-	static function parseInit($words) {
+	static public function parseInit($words) {
 		@list($host, $user, $pass) = array_splice($words, 0, 3);
 		if (!$host || !$user || !$pass) {
 			throw new Exception('Need host + user + pass');
