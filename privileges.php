@@ -89,21 +89,42 @@ class App {
 		}
 
 		$user = $this->getIdentity($name, $host);
-		$pass = $this->read('Password?');
-
-		if (empty($pass)) {
-			throw new CommandException('Password is required');
-		}
+		$pass = $this->read('Password? [random]') ?: $this->randomPassword();
 
 		$this->execute("CREATE USER $user IDENTIFIED BY '$pass'");
 
-		$this->success('User created!');
+		$this->success("User created! Password = '" . $this->yellow($pass) . "'.");
 	}
 
 	/**
-	 * database <database>
+	 * drop-user <user>
 	 */
-	public function cmd_db($db) {
+	public function cmd_drop_user($user) {
+		list($name, $host) = $this->getUser($user);
+		$user = $this->getIdentity($name, $host);
+
+		$this->execute("DROP USER $user");
+
+		$this->success("User dropped!");
+	}
+
+	/**
+	 * dbs
+	 */
+	public function cmd_dbs() {
+		$dbs = $this->queryAll('SHOW DATABASES');
+		$dbs = array_map('reset', $dbs);
+		natcasesort($dbs);
+
+		foreach ($dbs as $db) {
+			echo "- $db\n";
+		}
+	}
+
+	/**
+	 * db-info <database>
+	 */
+	public function cmd_db_info($db) {
 		$users = $this->getUsers();
 
 		$table = [];
@@ -126,13 +147,20 @@ class App {
 	}
 
 	/**
-	 * raw-user <user>
+	 * drop-db <database>
 	 */
-	public function cmd_raw_user($user) {
-		list($name, $host) = $this->getUser($user);
+	public function cmd_drop_db($db) {
+		$this->execute("DROP DATABASE `$db`");
 
+		$this->success('Database dropped!');
+	}
+
+	/**
+	 * raw-user-info <user>
+	 */
+	public function cmd_raw_user_info($user) {
 		$grants = $this->queryAll("
-			SHOW GRANTS FOR '$name'@'$host'
+			SHOW GRANTS FOR $user
 		");
 
 		$table = [];
@@ -144,9 +172,9 @@ class App {
 	}
 
 	/**
-	 * user <user>
+	 * user-info <user>
 	 */
-	public function cmd_user($user) {
+	public function cmd_user_info($user) {
 		list($name, $host) = $this->getUser($user);
 
 		$grants = $this->getParsedUserGrants("'$name'@'$host'");
@@ -194,13 +222,18 @@ class App {
 	public function cmd_help() {
 		echo "Available commands:\n";
 		echo "- help\n";
+
 		echo "- users\n";
-		echo "- user " . $this->green('<user>') . "\n";
-		echo "- db " . $this->green('<database>') . "\n";
+		echo "- user-info " . $this->hilite('<user>') . "\n";
 		echo "- create-user\n";
-		echo "- create-db\n";
+		echo "- drop-user " . $this->hilite('<user>') . "\n";
+
+		echo "- dbs\n";
+		echo "- db-info " . $this->hilite('<database>') . "\n";
+		echo "- create-db " . $this->hilite('<database>') . "\n";
+		echo "- drop-db " . $this->hilite('<database>') . "\n";
 		echo "- grant\n";
-		echo "- raw-user " . $this->green('<user>') . "\n";
+		echo "- raw-user-info " . $this->hilite('<raw-user>') . "\n";
 	}
 
 	/**
@@ -296,7 +329,12 @@ class App {
 	}
 
 	protected function queryAll($query) {
-		return iterator_to_array($this->db->query($query));
+		$result = $this->db->query($query);
+		if (!$result) {
+			throw new CommandException("[{$this->db->errno}] {$this->db->error}");
+		}
+
+		return iterator_to_array($result);
 	}
 
 	protected function query($query) {
@@ -308,6 +346,17 @@ class App {
 		if ($this->db->query($query) !== true) {
 			throw new CommandException("[{$this->db->errno}] {$this->db->error}");
 		}
+	}
+
+	protected function randomPassword() {
+		$chars = array_merge(range('A', 'Z'), range('a', 'z'), range(0, 9));
+
+		$pass = '';
+		while (strlen($pass) < 12) {
+			$pass .= $chars[ array_rand($chars) ];
+		}
+
+		return $pass;
 	}
 
 	protected function sortTable(array &$table) {
@@ -379,11 +428,18 @@ class App {
 	}
 
 	protected function red($message) {
+		// return $message;
 		return "\033[0;31m$message\033[0m";
 	}
 
 	protected function green($message) {
+		// return $message;
 		return "\033[0;32m$message\033[0m";
+	}
+
+	protected function yellow($message) {
+		// return $message;
+		return "\033[0;33m$message\033[0m";
 	}
 
 	protected function error($message) {
@@ -392,6 +448,10 @@ class App {
 
 	protected function success($message) {
 		echo $this->green($message) . "\n";
+	}
+
+	protected function hilite($message) {
+		return $this->yellow($message);
 	}
 
 	public function command($words) {
@@ -439,7 +499,7 @@ class App {
 
 	static public function parseInit($words) {
 		@list($host, $user, $pass) = array_splice($words, 0, 3);
-		if (!$host || !$user || !$pass) {
+		if (!$host || !$user || $pass === null) {
 			throw new Exception('Need host + user + pass');
 		}
 
