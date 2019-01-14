@@ -62,7 +62,7 @@ class App {
 
 		$this->execute("GRANT $privileges ON `$db`.* TO $user");
 		$this->success('Access granted!');
-		$this->cmd_user($user);
+		$this->cmd_user_info($user);
 	}
 
 	/**
