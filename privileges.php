@@ -60,8 +60,30 @@ class App {
 
 		$user = $this->getIdentity($name, $host);
 
-		$this->execute("GRANT $privileges ON `$db`.* TO $user");
+		$this->execute("GRANT $privileges ON $db.* TO $user");
 		$this->success('Access granted!');
+		$this->cmd_user_info($user);
+	}
+
+	/**
+	 * revoke
+	 */
+	public function cmd_revoke() {
+		$user = $this->read('user@host?');
+		if (empty($user)) {
+			throw new CommandException('User is required');
+		}
+
+		$db = $this->read('Which database? [*]') ?: '*';
+
+		if ($db == '*') {
+			$this->execute("REVOKE ALL PRIVILEGES ON *.* FROM $user");
+		}
+		else {
+			$this->execute("REVOKE ALL PRIVILEGES ON $db.* FROM $user");
+		}
+
+		$this->success('Access revoked!');
 		$this->cmd_user_info($user);
 	}
 
@@ -98,7 +120,7 @@ class App {
 	}
 
 	/**
-	 * drop-user <user>
+	 * drop-user <user@host>
 	 */
 	public function cmd_drop_user($user) {
 		list($name, $host) = $this->getUser($user);
@@ -157,7 +179,7 @@ class App {
 	}
 
 	/**
-	 * raw-user-info <user>
+	 * raw-user-info <user@host>
 	 */
 	public function cmd_raw_user_info($user) {
 		$grants = $this->queryAll("
@@ -173,7 +195,7 @@ class App {
 	}
 
 	/**
-	 * user-info <user>
+	 * user-info <user@host>
 	 */
 	public function cmd_user_info($user) {
 		list($name, $host) = $this->getUser($user);
@@ -225,16 +247,17 @@ class App {
 		echo "- help\n";
 
 		echo "- users\n";
-		echo "- user-info " . $this->hilite('<user>') . "\n";
+		echo "- user-info " . $this->hilite('<user@host>') . "\n";
 		echo "- create-user\n";
-		echo "- drop-user " . $this->hilite('<user>') . "\n";
+		echo "- drop-user " . $this->hilite('<user@host>') . "\n";
 
 		echo "- dbs\n";
 		echo "- db-info " . $this->hilite('<database>') . "\n";
 		echo "- create-db " . $this->hilite('<database>') . "\n";
 		echo "- drop-db " . $this->hilite('<database>') . "\n";
 		echo "- grant\n";
-		echo "- raw-user-info " . $this->hilite('<raw-user>') . "\n";
+		echo "- revoke\n";
+		echo "- raw-user-info " . $this->hilite('<user@host>') . "\n";
 	}
 
 	/**
@@ -344,9 +367,13 @@ class App {
 	}
 
 	protected function execute($query) {
+		$this->info("< $query");
+
 		if ($this->db->query($query) !== true) {
 			throw new CommandException("[{$this->db->errno}] {$this->db->error}");
 		}
+
+		$this->db->query('FLUSH PRIVILEGES');
 	}
 
 	protected function randomPassword() {
@@ -449,6 +476,10 @@ class App {
 
 	protected function success($message) {
 		echo $this->green($message) . "\n";
+	}
+
+	protected function info($message) {
+		echo $this->yellow($message) . "\n";
 	}
 
 	protected function hilite($message) {
