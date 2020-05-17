@@ -36,10 +36,7 @@ class App {
 	 * grant
 	 */
 	public function cmd_grant() {
-		$db = $this->read('Which database?');
-		if (empty($db)) {
-			throw new CommandException('Database is required');
-		}
+		$db = $this->read('Which database? [*]') ?: '*';
 
 		$host = $this->read('Access from which host? [localhost]') ?: 'localhost';
 		if (empty($host)) {
@@ -60,6 +57,7 @@ class App {
 
 		$user = $this->getIdentity($name, $host);
 
+		$this->execute("REVOKE ALL PRIVILEGES ON $db.* FROM $user");
 		$this->execute("GRANT $privileges ON $db.* TO $user");
 		$this->success('Access granted!');
 		$this->cmd_user_info($user);
@@ -489,6 +487,12 @@ class App {
 	public function command($words) {
 		$cmd = str_replace('-', '_', array_shift($words));
 		$args = $words;
+
+		switch ($cmd) {
+			case '?':
+				$cmd = 'help';
+				break;
+		}
 
 		// App exceptions
 		try {
